@@ -120,7 +120,7 @@ class InterfaceParser(object):
         print self.interfaces
 
 
-class NetSetup(object):
+class NetworkSetup(object):
     
     def __init__(self):
         self.parser = InterfaceParser()
@@ -259,7 +259,6 @@ class NetworkDb(object):
             if network[5] == 'True':
                 networkStatus['disconnect'] = True
                 networkStatus['safe'] = False
-            
         else:
             self.addNetwork(networkStatus)
             
@@ -287,40 +286,41 @@ class NetworkDb(object):
         for network in self.networks:
             print network
     
-class StateController(object):
+    
+class NetObj(object):
     
     def __init__(self):
-        self.netDict = {}
+        self.netDict = {'name':''}
         self.db = NetworkDb()
-        self.setup = NetSetup()
+        self.setup = NetworkSetup()
         self.parser = InterfaceParser()
         self.wifiOn = False
-        self.init = False
+        self.nameChanged = False
+        self.stateChanged = False
         self.updateDb()
                     
     def updateDb(self):
-        if self.init == False:
-            if  self.setup.getWifiStatus() is True:
-                self.wifiOn = True
-                self.netDict['name'] = self.setup.getAirportName()
-                networkStatus = self.db.checkPermissions(self.netDict['name'])
-                self.netDict['safe'] = networkStatus['safe']
-                self.netDict['warn'] = networkStatus['warn']
-                self.netDict['alert'] = networkStatus['alert']
-                self.netDict['disconnect'] = networkStatus['disconnect']
-            else:
-                self.wifiOn = False
-                self.netDict = {'safe': False, 'warn': True, 'alert': False, 'disconnect':False, 'name': ''}
-            self.init = True
+        if  self.setup.getWifiStatus() is True:
+            self.wifiOn = True
+            networkName =  self.setup.getAirportName()
+            if networkName != self.netDict['name']:
+                self.nameChanged = True
+                self.netDict['name'] = networkName
+            self.netDict['name'] = self.setup.getAirportName()
+            networkStatus = self.db.checkPermissions(self.netDict['name'])
+            self.netDict['safe'] = networkStatus['safe']
+            self.netDict['warn'] = networkStatus['warn']
+            self.netDict['alert'] = networkStatus['alert']
+            self.netDict['disconnect'] = networkStatus['disconnect']
+        else:
+            self.wifiOn = False
+            self.netDict = {'safe': False, 'warn': True, 'alert': False, 'disconnect':False, 'name': ''}
         print 'before update'
         print self.netDict
         self.db.update(self.netDict)
         print 'after update'
         updatedNetwork = self.db.getNetwork(self.netDict['name'])
         return updatedNetwork
-        
-        
-
         
     def checkIfStatusSelected(self):
         if self.netDict['safe']  is False and self.netDict['warn']  is False and self.netDict['alert'] is False and self.netDict['disconnect']  is False:
@@ -344,46 +344,121 @@ class StateController(object):
             self.netDict['safe'] = True
         else:
             self.netDict[state] = value
-            
+        
+        self.stateChanged = True
         print 'after state change'
         print self.netDict
-             
-    
         
+    def checkChanged(self):
+        changes = False
+        if self.nameChanged is True:
+            self.networkChanged = False
+            changes = True
+        if self.stateChanged is True:
+            self.stateChanged = False
+            changes = True
+        return changes
+        
+    def getNetworkState(self):
+        highestState = 'safe'
+        if self.netDict['safe'] is True:
+            highestState = 'safe'
+        if self.netDict['warn'] is True:
+            highestState = 'warn'
+        if self.netDict['alert'] is True:
+            highestState = 'alert'
+        if self.netDict['disconnect'] is True:
+            highestState = 'disconnect'
+
+class StateController(object):
     
-
-
-db = NetworkDb()
-
-netDict = {}
-netDict['name'] = 'sampson' 
-netDict['safe'] = True
-netDict['warn'] = True
-netDict['alert'] = False
-netDict['disconnect'] = False
-# 
-db.addNetwork(netDict)
-# 
-# 
-nets = db.getNetworks()
-for net in nets:
-    print net
-#     
-# safe = safenets.checkIfSafe('bartertown')
+    def __init__(self):
+        self.db = NetworkDb()
+        self.setup = NetworkSetup()      
+        self.parser = InterfaceParser()
+        self.netObj = NetObj()
+        self.controlLoop()
+        
+        
+        
+    def controlLoop(self):
+        while 1:
+            
+            print self.netObj.netDict
+            time.sleep(5)
+            if self.netObj.checkChanged() is True:
+                #some sort of change occured
+                self.netObj.updateDb()
+                
+    def determineAction(self, state):
+# if safe, ensure green icon, network is connected
+        if state == 'safe':
+            self.verifyIcon('green')
+            self.verifyConnection('on')
+        
+        # if warning, display yellow icon, keep connection alive
+        if state == 'warn':
+            self.verifyIcon('green')
+            self.verifyConnection('on')
+        #     if alert state present an nalert message, display the red icon and keep connection alive
+        if state == 'alert':
+            self.verifyIcon('red')
+            self.alertMessage()
+            self.verifyConnection('on')
+            
+        if state == 'disconnect'
+            self.verifyIcon('x')
+            self.verifyConnection('off')
+            self.alertMessage()
+            
+        def verifyIcon(self, neededIcon):
+            if neededIcon != self.currentIcon:
+                self.currentIcon = neededIcon
+                self.updateIcon()
+                
+        def verifyConnection(self, neededConnection):
+            if neededConnection != self.currentConnection:
+                verified = self.alterConnection()
+                return verified
+            return true
+                
+                
+            
+            
+            
 
 stateControl = StateController()
-stateControl.updateState('safe', False)
-stateControl.updateState('warn', True)
-state = stateControl.updateDb()
-print state
 
-stateControl.updateState('disconnect', True)
-stateControl.updateState('warn', True)
 
-state = stateControl.updateDb()
-
-print "count is " + str(len(nets)) + " networks "
-
+# db = NetworkDb()
+# 
+# netDict = {}
+# netDict['name'] = 'jeffrey2' 
+# netDict['safe'] = True
+# netDict['warn'] = True
+# netDict['alert'] = False
+# netDict['disconnect'] = False
+# # 
+# db.addNetwork(netDict)
+# # 
+# # 
+# nets = db.getNetworks()
+# 
+# #     
+# # safe = safenets.checkIfSafe('bartertown')
+# 
+# stateControl = StateController()
+# stateControl.updateState('safe', False)
+# stateControl.updateState('warn', True)
+# state = stateControl.updateDb()
+# 
+# stateControl.updateState('disconnect', True)
+# stateControl.updateState('warn', True)
+# 
+# state = stateControl.updateDb()
+# 
+# print "count is " + str(len(nets)) + " networks "
+# 
 
 
 

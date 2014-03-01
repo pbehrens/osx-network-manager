@@ -1,2 +1,4 @@
-WIRELESS_INTERFACE = 'en0'
+WIRELESS_INTERFACE = 'en1'
 WIRED_INTERFACE = 'en0'
+SAFE_NETWORKS = 'safe'
+DB = 'networks.db'

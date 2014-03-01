@@ -1,8 +1,12 @@
 import re
 import ifcfg
+import os
 import json
-from subprocess import call
+import subprocess
 from settings import *
+import time
+
+import sqlite3
 
 class InterfaceParser(object):
     
@@ -149,11 +153,90 @@ class NetSetup(object):
         self.up()
         call(['networksetup', '-setairportpower', self.parser.wifiDevice, 'off'])
         
+    def getAirportName(self):
+        self.up()
+        name = subprocess.check_output(['networksetup', '-getairportnetwork', self.parser.wifiDevice])
+        name = name[23:]
+        print name
+        return name
+        
+    def setAirportNetwork(self, name, password):
+        self.up()
+        name = subprocess.check_output(['networksetup', '-setairportnetwork', self.parser.wifiDevice, name, password])
+        print name
+        if name[0:1] == 'F':
+            return False
+        else:
+            return True
+            
+        
+        
     def check(self):
         self.up()
         print self.parser.wifiDevice
 
 
-setup = NetSetup()
+class SafeNetworks(object):
+    
+    def __init__(self):
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
+        self.dbPath = os.path.join(scriptdir, DB)
+        
+        self.db = sqlite3.connect(self.dbPath)
+        
+    def addNetwork(self, networkName):
+        cursor = self.db.cursor()
+        cursor.execute('INSERT INTO safe_networks(network) VALUES(?)', (networkName,))
+        print "it was inserted"
+        self.db.commit()
+    
+    def deleteNetwork(self, networkName):
+          cursor = self.db.cursor()
+          cursor.execute('''DELETE FROM safe_networks WHERE network = ? ''', (networkName,))
+          self.db.commit()
+          
+    def getNetworks(self):
+        cursor = self.db.cursor()
+        cursor.execute('''SELECT * FROM safe_networks''')
 
-setup.check()
+        allRows = cursor.fetchall()
+        return allRows
+        
+    def checkIfSafe(self, networkName):
+        cursor = self.db.cursor()
+        cursor.execute('''SELECT * FROM safe_networks WHERE network = ?''', (networkName,))
+        result = cursor.fetchall()
+        if len(result) > 0:
+            return True
+        else:
+            return False
+        
+    def printNetworks(self):
+        print len(self.networks)
+        for network in self.networks:
+            print network
+    
+
+
+
+safenets = SafeNetworks()
+
+safenets.addNetwork('pat')
+nets = safenets.getNetworks()
+for net in nets:
+    print net
+    
+safe = safenets.checkIfSafe('bartertown')
+
+print safe
+
+# setup = NetSetup()
+# 
+# setup.check()
+# 
+# success = setup.setAirportNetwork('bartertown', 'hamb762h6')
+# 
+# if success:
+#     print 'connected well'
+# else:
+#     print 'didnt connect'

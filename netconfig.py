@@ -5,7 +5,7 @@ import json
 import subprocess
 from settings import *
 import time
-
+from threading import Thread
 import sqlite3
 
 class InterfaceParser(object):
@@ -122,24 +122,30 @@ class InterfaceParser(object):
 
 class NetworkSetup(object):
     
-    def __init__(self):
-        self.parser = InterfaceParser()
+    def __init__(self, parser):
+        self.parser = parser
         
     def up(self):
         self.interfaces = self.parser.populateInterfaces()
     
     def getWifiPowerStatus(self):
         self.up()
-        call(['networksetup', '-getairportpower', self.parser.wifiDevice])
+        status = subprocess.check_output(['networksetup', '-getairportpower', self.parser.wifiDevice])
+        if status[-2:] == 'On':
+            return 'on'
+        elif status[-3:] == 'Off':
+            return 'off'
+        else:
+            return 'error'
     
     def turnWifiOn(self):
         self.up()
-        call(['networksetup', '-setairportpower', self.parser.wifiDevice, 'on'])
+        subprocess.call(['networksetup', '-setairportpower', self.parser.wifiDevice, 'on'])
         
         
     def turnWifiOff(self):
         self.up()
-        call(['networksetup', '-setairportpower', self.parser.wifiDevice, 'off'])
+        subprocess.call(['networksetup', '-setairportpower', self.parser.wifiDevice, 'off'])
         
     def getAirportName(self):
         self.up()
@@ -289,15 +295,16 @@ class NetworkDb(object):
     
 class NetObj(object):
     
-    def __init__(self):
+    def __init__(self, parser):
         self.netDict = {'name':''}
         self.db = NetworkDb()
         self.setup = NetworkSetup()
-        self.parser = InterfaceParser()
+        self.parser = parser
         self.wifiOn = False
         self.nameChanged = False
         self.stateChanged = False
         self.updateDb()
+        self.highestState = self.getNetworkState()
                     
     def updateDb(self):
         if  self.setup.getWifiStatus() is True:
@@ -369,65 +376,100 @@ class NetObj(object):
             highestState = 'alert'
         if self.netDict['disconnect'] is True:
             highestState = 'disconnect'
+        self.highestState = highestState
+        return highestState
 
-class StateController(object):
-    
-    def __init__(self):
-        self.db = NetworkDb()
-        self.setup = NetworkSetup()      
+# class StateController(object):
+#     
+#     def __init__(self, time):
+#         self.time = time
+#         self.db = NetworkDb()
+#         self.setup = NetworkSetup()      
+#         self.parser = InterfaceParser()
+#         self.netObj = NetObj()        
+#         self.currentIcon = ''
+#         self.currentConnection = ''
+#         self.controlLoop()
+#         
+#     def controlLoop(self):
+#         print self.netObj.netDict
+#         if self.netObj.checkChanged() is True:
+#             #some sort of change occured
+#             self.netObj.updateDb()
+#         print self.determineAction(self.netObj.getNetworkState())
+# 
+#     
+#     
+#     def determineAction(self, state):
+# # if safe, ensure green icon, network is connected
+#         if state == 'safe':
+#             self.verifyIcon('green')
+#             self.verifyConnection('on')
+#         
+#         # if warning, display yellow icon, keep connection alive
+#         if state == 'warn':
+#             self.verifyIcon('yellow')
+#             self.verifyConnection('on')
+#         #     if alert state present an nalert message, display the red icon and keep connection alive
+#         if state == 'alert':
+#             self.verifyIcon('red')
+#             self.alertMessage()
+#             self.verifyConnection('on')
+#             
+#         if state == 'disconnect':
+#             self.verifyIcon('x')
+#             self.verifyConnection('off')
+#             # self.alertMessage()
+#             
+#         
+#     
+#     def verifyIcon(self, neededIcon):
+#         if neededIcon != self.currentIcon:
+#             self.currentIcon = neededIcon
+#             self.updateIcon()
+#             
+#     def updateIcon(self):
+#         print "icon: " + self.currentIcon
+#             
+#     def verifyConnection(self, neededConnection):
+#         if neededConnection != self.currentConnection:
+#             verified = self.alterConnection(neededConnection)
+#             return verified
+#         return true
+# 
+#     def alterConnection(self, neededConnection):
+#         if neededConnection == 'off':
+#             self.setup.turnWifiOff()
+#             if self.setup.getWifiPowerStatus() == 'off':
+#                 return True
+#         elif neededConnection == 'on':
+#             self.setup.turnWifiOn()
+#             if self.setup.getWifiPowerStatus() == 'on':
+#                 return True
+#             return True
+#         else:
+#             #do nothing some error occured
+#             print "error"
+#         return False
+#             
+# class NetworkCommand(object):
+#     def __init__(self, interface, command,):
+        
+            
+class NetworkStatusThread(Thread):
+    def __init__(self, uiUpdateCallback, interfaceUpdateCallback, networkCommand, interval):
+        Thread.__init__(self)
+        self.callback = callback
         self.parser = InterfaceParser()
-        self.netObj = NetObj()
-        self.controlLoop()
-        
-        
-        
-    def controlLoop(self):
-        while 1:
-            
-            print self.netObj.netDict
-            time.sleep(5)
-            if self.netObj.checkChanged() is True:
-                #some sort of change occured
-                self.netObj.updateDb()
-                
-    def determineAction(self, state):
-# if safe, ensure green icon, network is connected
-        if state == 'safe':
-            self.verifyIcon('green')
-            self.verifyConnection('on')
-        
-        # if warning, display yellow icon, keep connection alive
-        if state == 'warn':
-            self.verifyIcon('green')
-            self.verifyConnection('on')
-        #     if alert state present an nalert message, display the red icon and keep connection alive
-        if state == 'alert':
-            self.verifyIcon('red')
-            self.alertMessage()
-            self.verifyConnection('on')
-            
-        if state == 'disconnect'
-            self.verifyIcon('x')
-            self.verifyConnection('off')
-            self.alertMessage()
-            
-        def verifyIcon(self, neededIcon):
-            if neededIcon != self.currentIcon:
-                self.currentIcon = neededIcon
-                self.updateIcon()
-                
-        def verifyConnection(self, neededConnection):
-            if neededConnection != self.currentConnection:
-                verified = self.alterConnection()
-                return verified
-            return true
-                
-                
-            
-            
-            
+        self.interval = interval
 
-stateControl = StateController()
+    def collectNetworkData(self):
+        return self.parser.populateInterfaces()
+        
+    def run(self):
+        data = "hello"
+        self.interfaceUpdateCallback(self.collectNetworkData())
+        time.sleep(interval)
 
 
 # db = NetworkDb()

@@ -6,20 +6,16 @@ class StateController(object):
         self.interval = time
         self.db = NetworkDb()
         self.parser = None
-        self.netObj = NetObj()        
         self.currentIcon = ''
         self.currentConnection = ''
-        self.controlLoop()
-        NetworkStatusThread(self.initParser, 0).start()
         self.refresh = True
+        NetworkStatusThread(self.initParser, 0).start()
         
-    
     def controlLoop(self):
-        print self.netObj.netDict
         if self.netObj.checkChanged() is True:
             #some sort of change occured
             self.netObj.updateDb()
-        print self.determineAction(self.netObj.getNetworkState())
+        self.determineAction(self.netObj.getNetworkState())
         
     def stopRefresh(self):
         self.refresh = False
@@ -30,18 +26,20 @@ class StateController(object):
         
     def initParser(self, parser, interval):
         self.parser = parser
+        self.netObj = NetObj(self.parser)        
+        self.setup = NetworkSetup(self.parser)
         self.controlLoop()
         NetworkStatusThread(self.maintainNetworkStatus, self.interval).start()
             
     def maintainNetworkStatus(self, parser, interval):
         self.parser = parser
         self.controlLoop()
-        if refresh is True
+        if self.refresh is True:
             NetworkStatusThread(self.maintainNetworkStatus, self.interval).start()
         
         
     def determineAction(self, state):
-# if safe, ensure green icon, network is connected
+        # if safe, ensure green icon, network is connected
         if state == 'safe':
             self.verifyIcon('green')
             self.verifyConnection('on')
@@ -50,19 +48,18 @@ class StateController(object):
         if state == 'warn':
             self.verifyIcon('yellow')
             self.verifyConnection('on')
+            
         #     if alert state present an nalert message, display the red icon and keep connection alive
         if state == 'alert':
             self.verifyIcon('red')
             self.alertMessage()
             self.verifyConnection('on')
-            
+        # bad network disconnect    
         if state == 'disconnect':
             self.verifyIcon('x')
             self.verifyConnection('off')
             # self.alertMessage()
             
-        
-    
     def verifyIcon(self, neededIcon):
         if neededIcon != self.currentIcon:
             self.currentIcon = neededIcon

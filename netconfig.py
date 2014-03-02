@@ -151,13 +151,11 @@ class NetworkSetup(object):
         self.up()
         name = subprocess.check_output(['networksetup', '-getairportnetwork', self.parser.wifiDevice])
         name = name[23:]
-        print name
         return name
         
     def setAirportNetwork(self, name, password):
         self.up()
         name = subprocess.check_output(['networksetup', '-setairportnetwork', self.parser.wifiDevice, name, password])
-        print name
         if name[0:1] == 'F':
             return False
         else:
@@ -177,18 +175,23 @@ class NetworkDb(object):
     def __init__(self):
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         self.dbPath = os.path.join(scriptdir, DB)
-        
+            
+    def open(self):
         self.db = sqlite3.connect(self.dbPath)
         
+    def close(self):
+        self.db.close()
+    
     def addNetwork(self, netDict):
         print(netDict)
         if self.checkIfNew(netDict['name']):            
             netDict = self.stringDict(netDict)
+            self.open()
             cursor = self.db.cursor()
             cursor.execute('''INSERT INTO networks (name, safe, warn, alert, disconnect) 
             VALUES (?, ?, ?, ?, ?)''', (netDict['name'], netDict['safe'], netDict['warn'], netDict['alert'], netDict['disconnect'], ))
-            print "it was inserted"
             self.db.commit()
+            self.close()
         else:
             self.update(netDict)
             
@@ -196,61 +199,75 @@ class NetworkDb(object):
         if self.checkIfNew(netDict['name']) is True:
             self.addNetwork(netDict)
         else:
-            netDict = self.stringDict(netDict)            
+            netDict = self.stringDict(netDict)
+            self.open()            
             cursor = self.db.cursor()
             cursor.execute('''UPDATE networks SET name = ?, safe = ?, warn = ?, alert = ?, disconnect = ? WHERE name = ?;''',
             (netDict['name'], netDict['safe'], netDict['warn'], netDict['alert'], netDict['disconnect'], netDict['name']))
             self.db.commit()
+            self.close()
         return self.booleanDict(netDict)
     
     
     def deleteNetwork(self, networkName):
-          cursor = self.db.cursor()
-          cursor.execute('''DELETE FROM networks WHERE name = ? ''', (networkName,))
-          self.db.commit()
-          
+        self.open()
+        cursor = self.db.cursor()
+        cursor.execute('''DELETE FROM networks WHERE name = ? ''', (networkName,))
+        self.db.commit()
+        self.close()
+        
     def getNetwork(self, networkName):
+        self.open()
         cursor = self.db.cursor()
         cursor.execute('''SELECT * FROM networks WHERE name = ? ''', (networkName,))
         result = cursor.fetchall()
+        self.close()
         if len(result) > 0:
             return result[0]
         else:
             return False
             
+            
     def getNetworks(self):
+        self.open()
         cursor = self.db.cursor()
         cursor.execute('''SELECT * FROM networks''')
 
         allRows = cursor.fetchall()
+        self.close()
         convertedRows = []
         for row in allRows:
             convertedRows.append(self.booleanDict({'id':row[0], 'name':row[1], 'safe':row[2], 'warn': row[3], 'alert':row[4], 'disconnect':row[5]}))
         return convertedRows
         
     def checkIfSafe(self, networkName):
+        self.open()
         cursor = self.db.cursor()
         cursor.execute('''SELECT * FROM networks WHERE name = ? AND safe = 'True' ''', (networkName,))
         result = cursor.fetchall()
+        self.close()
         if len(result) > 0:
             return True
         else:
             return False
             
     def checkIfNew(self, networkName):
+        self.open()
         cursor = self.db.cursor()
         cursor.execute('''SELECT * FROM networks WHERE name = ?''', (networkName,))
         result = cursor.fetchall()
+        self.close()
         if len(result) > 0:
             return False
         else:
             return True
         
     def checkPermissions(self, networkName):
+        self.open()
         cursor = self.db.cursor()
         cursor.execute('''SELECT * FROM networks WHERE name = ?''', (networkName,))
         result = cursor.fetchall()
-        
+        self.close()
         networkStatus = {'name': networkName, 'safe': False, 'warn':False, 'alert': False, 'disconnect': False}
         if len(result) > 0:
             network = result[0]
@@ -296,10 +313,10 @@ class NetworkDb(object):
 class NetObj(object):
     
     def __init__(self, parser):
+        self.parser = parser
         self.netDict = {'name':''}
         self.db = NetworkDb()
-        self.setup = NetworkSetup()
-        self.parser = parser
+        self.setup = NetworkSetup(self.parser)
         self.wifiOn = False
         self.nameChanged = False
         self.stateChanged = False
@@ -322,10 +339,7 @@ class NetObj(object):
         else:
             self.wifiOn = False
             self.netDict = {'safe': False, 'warn': True, 'alert': False, 'disconnect':False, 'name': ''}
-        print 'before update'
-        print self.netDict
         self.db.update(self.netDict)
-        print 'after update'
         updatedNetwork = self.db.getNetwork(self.netDict['name'])
         return updatedNetwork
         
@@ -337,7 +351,6 @@ class NetObj(object):
             return True
             
     def updateState(self, state, value):
-        print "change " + state + " to " + str(value)
         if self.netDict['safe'] is False and state == 'safe':
             self.netDict['safe'] = value
         if self.netDict['disconnect'] is False and state == 'disconnect':
@@ -353,8 +366,6 @@ class NetObj(object):
             self.netDict[state] = value
         
         self.stateChanged = True
-        print 'after state change'
-        print self.netDict
         
     def checkChanged(self):
         changes = False
@@ -379,138 +390,19 @@ class NetObj(object):
         self.highestState = highestState
         return highestState
 
-# class StateController(object):
-#     
-#     def __init__(self, time):
-#         self.time = time
-#         self.db = NetworkDb()
-#         self.setup = NetworkSetup()      
-#         self.parser = InterfaceParser()
-#         self.netObj = NetObj()        
-#         self.currentIcon = ''
-#         self.currentConnection = ''
-#         self.controlLoop()
-#         
-#     def controlLoop(self):
-#         print self.netObj.netDict
-#         if self.netObj.checkChanged() is True:
-#             #some sort of change occured
-#             self.netObj.updateDb()
-#         print self.determineAction(self.netObj.getNetworkState())
-# 
-#     
-#     
-#     def determineAction(self, state):
-# # if safe, ensure green icon, network is connected
-#         if state == 'safe':
-#             self.verifyIcon('green')
-#             self.verifyConnection('on')
-#         
-#         # if warning, display yellow icon, keep connection alive
-#         if state == 'warn':
-#             self.verifyIcon('yellow')
-#             self.verifyConnection('on')
-#         #     if alert state present an nalert message, display the red icon and keep connection alive
-#         if state == 'alert':
-#             self.verifyIcon('red')
-#             self.alertMessage()
-#             self.verifyConnection('on')
-#             
-#         if state == 'disconnect':
-#             self.verifyIcon('x')
-#             self.verifyConnection('off')
-#             # self.alertMessage()
-#             
-#         
-#     
-#     def verifyIcon(self, neededIcon):
-#         if neededIcon != self.currentIcon:
-#             self.currentIcon = neededIcon
-#             self.updateIcon()
-#             
-#     def updateIcon(self):
-#         print "icon: " + self.currentIcon
-#             
-#     def verifyConnection(self, neededConnection):
-#         if neededConnection != self.currentConnection:
-#             verified = self.alterConnection(neededConnection)
-#             return verified
-#         return true
-# 
-#     def alterConnection(self, neededConnection):
-#         if neededConnection == 'off':
-#             self.setup.turnWifiOff()
-#             if self.setup.getWifiPowerStatus() == 'off':
-#                 return True
-#         elif neededConnection == 'on':
-#             self.setup.turnWifiOn()
-#             if self.setup.getWifiPowerStatus() == 'on':
-#                 return True
-#             return True
-#         else:
-#             #do nothing some error occured
-#             print "error"
-#         return False
-#             
-# class NetworkCommand(object):
-#     def __init__(self, interface, command,):
-        
-            
+
+           
 class NetworkStatusThread(Thread):
-    def __init__(self, uiUpdateCallback, interfaceUpdateCallback, networkCommand, interval):
+    def __init__(self, interfaceUpdateCallback, interval):
         Thread.__init__(self)
-        self.callback = callback
+        self.interfaceUpdateCallback = interfaceUpdateCallback
         self.parser = InterfaceParser()
         self.interval = interval
 
     def collectNetworkData(self):
-        return self.parser.populateInterfaces()
+        self.parser.populateInterfaces()
+        return self.parser
         
     def run(self):
-        data = "hello"
-        self.interfaceUpdateCallback(self.collectNetworkData())
-        time.sleep(interval)
-
-
-# db = NetworkDb()
-# 
-# netDict = {}
-# netDict['name'] = 'jeffrey2' 
-# netDict['safe'] = True
-# netDict['warn'] = True
-# netDict['alert'] = False
-# netDict['disconnect'] = False
-# # 
-# db.addNetwork(netDict)
-# # 
-# # 
-# nets = db.getNetworks()
-# 
-# #     
-# # safe = safenets.checkIfSafe('bartertown')
-# 
-# stateControl = StateController()
-# stateControl.updateState('safe', False)
-# stateControl.updateState('warn', True)
-# state = stateControl.updateDb()
-# 
-# stateControl.updateState('disconnect', True)
-# stateControl.updateState('warn', True)
-# 
-# state = stateControl.updateDb()
-# 
-# print "count is " + str(len(nets)) + " networks "
-# 
-
-
-
-# setup = NetSetup()
-# 
-# setup.check()
-# 
-# success = setup.setAirportNetwork('bartertown', 'hamb762h6')
-# 
-# if success:
-#     print 'connected well'
-# else:
-#     print 'didnt connect'
+        time.sleep(self.interval)
+        self.interfaceUpdateCallback(self.collectNetworkData(), self.interval)
